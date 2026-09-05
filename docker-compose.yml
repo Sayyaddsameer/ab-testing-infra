@@ -1,0 +1,38 @@
+# Docker Compose for the A/B testing infrastructure.
+#
+# This spins up LocalStack and runs init-aws.sh automatically once the
+# simulated AWS services are ready. The user data scripts are mounted
+# at /opt/user-data/ so init-aws.sh can base64-encode them at runtime.
+
+services:
+  localstack:
+    image: localstack/localstack
+    container_name: ab-testing-localstack
+    ports:
+      - "4566:4566"
+    environment:
+      - SERVICES=${SERVICES:-ec2,elbv2,autoscaling,iam,s3,sts}
+      - DEBUG=${DEBUG:-0}
+      - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-us-east-1}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-test}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-test}
+    volumes:
+      # LocalStack picks up anything in ready.d/ once all services are up
+      - ./init-aws.sh:/etc/localstack/init/ready.d/init-aws.sh
+
+      # User data scripts, read by init-aws.sh during launch template creation
+      - ./user_data_a.sh:/opt/user-data/user_data_a.sh
+      - ./user_data_b.sh:/opt/user-data/user_data_b.sh
+
+      # Optional: keep LocalStack state between restarts
+      - localstack-data:/var/lib/localstack
+      - /var/run/docker.sock:/var/run/docker.sock
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+volumes:
+  localstack-data:
